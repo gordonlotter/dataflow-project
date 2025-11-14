@@ -1,4 +1,4 @@
-function LocalizationPage() {
+LocalizationPage() {
   const [currencies, setCurrencies] = useState([]);
   const [languages, setLanguages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -6,23 +6,46 @@ function LocalizationPage() {
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    async function fetchData() {
+    async function loadConnectionAndData() {
       setLoading(true);
       try {
-        const [currenciesRes, languagesRes] = await Promise.all([
-          supabase.from('currencies').select('*'),
-          supabase.from('languages').select('*'),
-        ]);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Please log in to view data');
 
-        if (currenciesRes.error) {
-          throw new Error(`Failed to fetch currencies: ${currenciesRes.error.message}`);
-        }
-        if (languagesRes.error) {
-          throw new Error(`Failed to fetch languages: ${languagesRes.error.message}`);
+        const { data: connections, error: connError } = await supabase
+          .from('database_connections')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .limit(1);
+
+        if (connError) throw connError;
+        if (!connections || connections.length === 0) {
+          throw new Error('No database connection found. Please connect a database first.');
         }
 
-        setCurrencies(currenciesRes.data || []);
-        setLanguages(languagesRes.data || []);
+        const connId = connections[0].id;
+
+        const { data: currenciesResult, error: currError } = await supabase.functions.invoke('db-query', {
+          body: {
+            connectionId: connId,
+            query: 'SELECT * FROM currencies ORDER BY code'
+          }
+        });
+
+        if (currError) throw new Error(`Failed to fetch currencies: ${currError.message}`);
+
+        const { data: languagesResult, error: langError } = await supabase.functions.invoke('db-query', {
+          body: {
+            connectionId: connId,
+            query: 'SELECT * FROM languages ORDER BY code'
+          }
+        });
+
+        if (langError) throw new Error(`Failed to fetch languages: ${langError.message}`);
+
+        setCurrencies(currenciesResult?.data || []);
+        setLanguages(languagesResult?.data || []);
         setError(null);
       } catch (err) {
         setError(err.message);
@@ -31,17 +54,17 @@ function LocalizationPage() {
         setLoading(false);
       }
     }
-    fetchData();
+    loadConnectionAndData();
   }, []);
 
-  const filteredCurrencies = currencies.filter(currency =>
-    currency.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    currency.code.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredCurrencies = (Array.isArray(currencies) ? currencies : []).filter(currency =>
+    currency.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    currency.code?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const filteredLanguages = languages.filter(language =>
-    language.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    language.code.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredLanguages = (Array.isArray(languages) ? languages : []).filter(language =>
+    language.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    language.code?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -105,8 +128,8 @@ function LocalizationPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCurrencies.map((currency) => (
-                    <TableRow key={currency.id}>
+                  {filteredCurrencies.map((currency, idx) => (
+                    <TableRow key={currency.id || idx}>
                       <TableCell className="font-medium">{currency.code}</TableCell>
                       <TableCell>{currency.name}</TableCell>
                       <TableCell>{currency.symbol}</TableCell>
@@ -138,8 +161,8 @@ function LocalizationPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredLanguages.map((language) => (
-                    <TableRow key={language.id}>
+                  {filteredLanguages.map((language, idx) => (
+                    <TableRow key={language.id || idx}>
                       <TableCell className="font-medium">{language.code}</TableCell>
                       <TableCell>{language.name}</TableCell>
                       <TableCell>{language.native_name}</TableCell>
