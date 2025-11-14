@@ -44,11 +44,34 @@ function LocalizationPage() {
     language.code.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+          <p className="mt-4 text-muted-foreground">Loading localization data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 bg-background min-h-screen">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error Loading Data</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-6 bg-background min-h-screen">
       <header className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">Localization</h1>
-        <p className="text-gray-500 mt-1">Manage currencies and languages for your platform.</p>
+        <h1 className="text-3xl font-bold text-foreground">Localization</h1>
+        <p className="text-muted-foreground mt-1">Manage currencies and languages for your platform.</p>
       </header>
 
       <div className="mb-6 max-w-md">
@@ -61,27 +84,18 @@ function LocalizationPage() {
         />
       </div>
 
-      {loading && (
-        <div className="flex justify-center items-center h-64">
-          <p className="text-gray-500">Loading data...</p>
-        </div>
-      )}
-
-      {error && (
-        <Alert variant="destructive">
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {!loading && !error && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <Card>
-            <CardHeader>
-              <CardTitle>Currencies</CardTitle>
-              <CardDescription>Available currencies.</CardDescription>
-            </CardHeader>
-            <CardContent>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Currencies</CardTitle>
+            <CardDescription>Available currencies ({filteredCurrencies.length})</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {filteredCurrencies.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No currencies found</p>
+              </div>
+            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -100,15 +114,21 @@ function LocalizationPage() {
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+            )}
+          </CardContent>
+        </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Languages</CardTitle>
-              <CardDescription>Available languages.</CardDescription>
-            </CardHeader>
-            <CardContent>
+        <Card>
+          <CardHeader>
+            <CardTitle>Languages</CardTitle>
+            <CardDescription>Available languages ({filteredLanguages.length})</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {filteredLanguages.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No languages found</p>
+              </div>
+            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -116,7 +136,7 @@ function LocalizationPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Native Name</TableHead>
                   </TableRow>
-                TableHeader>
+                </TableHeader>
                 <TableBody>
                   {filteredLanguages.map((language) => (
                     <TableRow key={language.id}>
@@ -127,10 +147,10 @@ function LocalizationPage() {
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
