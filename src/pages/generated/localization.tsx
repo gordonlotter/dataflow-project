@@ -1,3 +1,4 @@
+'''
 function LocalizationPage() {
   const [currencies, setCurrencies] = useState([]);
   const [languages, setLanguages] = useState([]);
@@ -9,7 +10,6 @@ function LocalizationPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // CORRECTION: Removed 'public.' prefix from table names
         const [currenciesRes, languagesRes] = await Promise.all([
           supabase.from('currencies').select('id,code,name,symbol,is_active'),
           supabase.from('languages').select('id,code,name,native_name,is_active')
@@ -183,3 +183,4 @@ function LocalizationPage() {
 }
 
 render(<LocalizationPage />);
+'''
