@@ -1,3 +1,4 @@
+'''
 function LocalizationPage() {
   const [currencies, setCurrencies] = useState([]);
   const [languages, setLanguages] = useState([]);
@@ -141,7 +142,7 @@ function LocalizationPage() {
                     <TableCell className="font-mono">{l.code}</TableCell>
                     <TableCell className="text-right">
                        <Badge variant={l.is_active ? 'default' : 'secondary'}
-                        className={l.is_active ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'}
+                        className={l.is_active ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' : 'bg-ray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'}
                       >
                         {l.is_active ? 'Active' : 'Inactive'}
                       </Badge>
