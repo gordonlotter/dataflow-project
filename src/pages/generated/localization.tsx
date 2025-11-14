@@ -1,4 +1,3 @@
-'''
 function LocalizationPage() {
   const [currencies, setCurrencies] = useState([]);
   const [languages, setLanguages] = useState([]);
