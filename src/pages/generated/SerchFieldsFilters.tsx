@@ -1,213 +1,149 @@
-Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-
-
 function SerchFieldsFilters() {
   interface Language {
-  id: string;
+  id: number;
   name: string;
   code: string;
 }
   interface Currency {
-  id: string;
+  id: number;
   name: string;
   code: string;
   symbol: string;
-}
-  interface LinkedData {
-  language: Language;
-  currency: Currency[];
+  language_id: number | null; // Assuming a foreign key link here
 }
 
   const [languages, setLanguages] = useState<Language[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
-  const [linkedData, setLinkedData] = useState<LinkedData[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [selectedLanguage, setSelectedLanguage] = useState<string>('');
+  const [selectedLanguageFilter, setSelectedLanguageFilter] = useState<string>('all');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchData();
+    loadData();
   }, []);
 
-  useEffect(() => {
-    filterData();
-  }, [searchTerm, selectedLanguage, languages, currencies]);
-
-  const fetchData = async () => {
+  const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const { data: langsData, error: langsError } = await supabase
+      const { data: langData, error: langError } = await supabase
         .from('languages')
         .select('id, name, code');
 
-      if (langsError) throw langsError;
-      setLanguages(langsData || []);
+      if (langError) throw langError;
+      setLanguages(langData || []);
 
-      const { data: currsData, error: currsError } = await supabase
+      const { data: currData, error: currError } = await supabase
         .from('currencies')
-        .select('id, name, code, symbol');
+        .select('id, name, code, symbol, language_id'); // Assuming language_id exists for linking
 
-      if (currsError) throw currsError;
-      setCurrencies(currsData || []);
+      if (currError) throw currError;
+      setCurrencies(currData || []);
 
     } catch (err: any) {
-      console.error('Error fetching data:', err.message);
-      setError('Failed to load data. Please try again.');
+      console.error("Error loading data:", err.message);
+      setError("Failed to load data. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const filterData = () => {
-    const results: LinkedData[] = languages
-      .filter(lang =>
-        lang.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        lang.code.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-      .filter(lang => !selectedLanguage || lang.id === selectedLanguage)
-      .map(lang => {
-        // This is a placeholder for actual linking logic.
-        // In a real application, you'd likely have a linking table or
-        // a more complex way to associate languages with currencies.
-        // For now, we'll associate some currencies arbitrarily or based on a simple rule.
-        const associatedCurrencies = currencies.filter(curr => {
-            // Example: Link currencies with codes partially matching language code
-            // This is just for demonstration. Real linking would be based on business logic.
-            return lang.code.includes(curr.code.substring(0,2).toLowerCase()) ||
-                   curr.code.toLowerCase().includes(lang.code.substring(0,2).toLowerCase());
-        });
-        return { language: lang, currency: associatedCurrencies.length > 0 ? associatedCurrencies : [currencies[0]] || [] }; // Default to first currency if no link
-      });
-
-    setLinkedData(results);
+  const getLanguageName = (languageId: number | null) => {
+    if (!languageId) return "N/A";
+    const language = languages.find(lang => lang.id === languageId);
+    return language ? language.name : "Unknown Language";
   };
 
-  if (loading) {
-    return (
-      <div className="container mx-auto p-6">
-        <Card className="bg-background text-foreground shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-2xl font-bold">Currencies and Languages</CardTitle>
-            <CardDescription>Loading data...</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p>Loading languages and currencies...</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  const filteredCurrencies = currencies.filter(currency => {
+    const matchesSearchTerm = searchTerm.toLowerCase() === ''
+      || currency.name.toLowerCase().includes(searchTerm.toLowerCase())
+      || currency.code.toLowerCase().includes(searchTerm.toLowerCase())
+      || (currency.symbol && currency.symbol.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  if (error) {
-    return (
-      <div className="container mx-auto p-6">
-        <Card className="bg-background text-foreground shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-2xl font-bold">Currencies and Languages</CardTitle>
-            <CardDescription className="text-red-500">{error}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={fetchData} className="bg-primary text-primary-foreground">Retry</Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+    const matchesLanguageFilter = selectedLanguageFilter === 'all'
+      || (currency.language_id && currency.language_id.toString() === selectedLanguageFilter);
+
+    return matchesSearchTerm && matchesLanguageFilter;
+  });
 
   return (
-    <div className="container mx-auto p-6 bg-background text-foreground">
+    <div className="container mx-auto p-6 bg-background text-foreground min-h-screen">
       <Card className="shadow-lg">
-        <CardHeader className="border-b pb-4">
-          <CardTitle className="text-3xl font-extrabold tracking-tight">Currencies and Languages</CardTitle>
-          <CardDescription className="pt-2 text-muted-foreground">
-            Explore the relationship between languages and their associated currencies. Use the search and filter options to refine your view.
-          </CardDescription>
+        <CardHeader className="bg-primary text-primary-foreground p-4 rounded-t-lg">
+          <CardTitle className="text-2xl font-bold">Currencies and Languages</CardTitle>
         </CardHeader>
-        <CardContent className="pt-6">
+        <CardContent className="p-6">
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <Input
               type="text"
-              placeholder="Search by language name or code..."
+              placeholder="Search currencies by name, code, or symbol..."
+              className="flex-grow bg-muted text-foreground"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 p-2 border border-input rounded-md focus:ring-2 focus:ring-primary focus:border-primary-foreground"
             />
-            <Select onValueChange={setSelectedLanguage} value={selectedLanguage}>
-              <SelectTrigger className="w-[200px] bg-card text-card-foreground border-input">
+            <Select onValueChange={setSelectedLanguageFilter} value={selectedLanguageFilter}>
+              <SelectTrigger className="w-full md:w-[200px] bg-muted text-foreground">
                 <SelectValue placeholder="Filter by Language" />
               </SelectTrigger>
-              <SelectContent className="bg-popover text-popover-foreground">
-                <SelectItem value="">All Languages</SelectItem>
+              <SelectContent className="bg-background text-foreground">
+                <SelectItem value="all">All Languages</SelectItem>
                 {languages.map((lang) => (
-                  <SelectItem key={lang.id} value={lang.id}>
+                  <SelectItem key={lang.id} value={lang.id.toString()}>
                     {lang.name} ({lang.code})
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Button onClick={() => { setSearchTerm(''); setSelectedLanguage(''); }} className="bg-primary text-primary-foreground hover:bg-primary/90">
-              Clear Filters
+            <Button onClick={loadData} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+              Refresh Data
             </Button>
           </div>
 
-          <p className="mb-4 text-sm text-muted-foreground">
-            {linkedData.length} result(s) found.
-          </p>
+          {loading && <p className="text-center text-muted-foreground">Loading data...</p>}
+          {error && <p className="text-center text-destructive">{error}</p>}
 
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <Table className="w-full text-left">
-              <TableHeader className="bg-muted text-muted-foreground">
-                <TableRow>
-                  <TableHead className="px-6 py-3 font-semibold text-sm uppercase tracking-wider">Language Name</TableHead>
-                  <TableHead className="px-6 py-3 font-semibold text-sm uppercase tracking-wider">Language Code</TableHead>
-                  <TableHead className="px-6 py-3 font-semibold text-sm uppercase tracking-wider">Associated Currencies</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody className="bg-card divide-y divide-border">
-                {linkedData.map((item) => (
-                  <TableRow key={item.language.id} className="hover:bg-accent/50 transition-colors duration-200">
-                    <TableCell className="px-6 py-4 whitespace-nowrap font-medium text-card-foreground">
-                      {item.language.name}
-                    </TableCell>
-                    <TableCell className="px-6 py-4 whitespace-nowrap text-muted-foreground">
-                      {item.language.code}
-                    </TableCell>
-                    <TableCell className="px-6 py-4">
-                      {item.currency.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {item.currency.map((curr) => (
-                            <span
-                              key={curr.id}
-                              className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-secondary text-secondary-foreground shadow-sm"
-                            >
-                              {curr.name} ({curr.code}) {curr.symbol}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground italic">No specific currency linked</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {linkedData.length === 0 && (
+          {!loading && !error && (
+            <div className="overflow-x-auto">
+              <Table className="min-w-full divide-y divide-border">
+                <TableHeader className="bg-primary/10">
                   <TableRow>
-                    <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
-                      No languages or linked currencies found with the current filters.
-                    </TableCell>
+                    <TableHead className="py-3 px-4 text-left text-sm font-medium text-primary-foreground">Currency Name</TableHead>
+                    <TableHead className="py-3 px-4 text-left text-sm font-medium text-primary-foreground">Currency Code</TableHead>
+                    <TableHead className="py-3 px-4 text-left text-sm font-medium text-primary-foreground">Symbol</TableHead>
+                    <TableHead className="py-3 px-4 text-left text-sm font-medium text-primary-foreground">Linked Language</TableHead>
+                    <TableHead className="py-3 px-4 text-left text-sm font-medium text-primary-foreground">Language Code</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody className="divide-y divide-border">
+                  {filteredCurrencies.length > 0 ? (
+                    filteredCurrencies.map((currency) => {
+                      const linkedLanguage = languages.find(lang => lang.id === currency.language_id);
+                      return (
+                        <TableRow key={currency.id} className="hover:bg-muted/50 transition-colors">
+                          <TableCell className="py-3 px-4 whitespace-nowrap">{currency.name}</TableCell>
+                          <TableCell className="py-3 px-4 whitespace-nowrap font-mono">{currency.code}</TableCell>
+                          <TableCell className="py-3 px-4 whitespace-nowrap">{currency.symbol || 'N/A'}</TableCell>
+                          <TableCell className="py-3 px-4 whitespace-nowrap">
+                            {linkedLanguage ? linkedLanguage.name : 'Not Linked'}
+                          </TableCell>
+                          <TableCell className="py-3 px-4 whitespace-nowrap font-mono">
+                            {linkedLanguage ? linkedLanguage.code : 'N/A'}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">
+                        No currencies found matching your criteria.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
