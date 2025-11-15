@@ -1,45 +1,75 @@
 function SerchFieldsFilters() {
-  interface Language {
-  id: number;
-  name: string;
-  code: string;
-}
   interface Currency {
-  id: number;
-  name: string;
-  code: string;
-  symbol: string;
-  language_id: number | null; // Assuming a foreign key link here
-}
+    id: number;
+    code: string;
+    name: string;
+  }
+  interface Language {
+    id: number;
+    name: string;
+    code: string;
+  }
+  interface LinkedData {
+    currency: Currency;
+    languages: Language[];
+  }
 
-  const [languages, setLanguages] = useState<Language[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [selectedLanguageFilter, setSelectedLanguageFilter] = useState<string>('all');
+  const [languages, setLanguages] = useState<Language[]>([]);
+  const [filteredData, setFilteredData] = useState<LinkedData[]>([]);
+  const [currencySearch, setCurrencySearch] = useState<string>('');
+  const [languageSearch, setLanguageSearch] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
   useEffect(() => {
-    loadData();
+    loadInitialData();
   }, []);
 
-  const loadData = async () => {
+  useEffect(() => {
+    applyFilters();
+  }, [currencySearch, languageSearch, currencies, languages]);
+
+  const loadInitialData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const { data: langData, error: langError } = await supabase
-        .from('languages')
-        .select('id, name, code');
+      const { data: connections } = await supabase
+        .from('database_connections')
+        .select('id')
+        .eq('is_active', true)
+        .single();
 
-      if (langError) throw langError;
-      setLanguages(langData || []);
+      if (!connections) {
+        throw new Error("No active database connection found.");
+      }
+      const connectionId = connections.id;
 
-      const { data: currData, error: currError } = await supabase
-        .from('currencies')
-        .select('id, name, code, symbol, language_id'); // Assuming language_id exists for linking
+      // Load Currencies
+      const { data: currencyResult, error: currencyError } = await supabase.functions.invoke('db-query', {
+        body: {
+          connectionId,
+          query: 'SELECT id, code, name FROM currencies'
+        }
+      });
+      if (currencyError) throw currencyError;
+      setCurrencies(currencyResult || []);
 
-      if (currError) throw currError;
-      setCurrencies(currData || []);
+
+      // Load Languages
+      const { data: languageResult, error: languageError } = await supabase.functions.invoke('db-query', {
+        body: {
+          connectionId,
+          query: 'SELECT id, name, code FROM languages'
+        }
+      });
+      if (languageError) throw languageError;
+      setLanguages(languageResult || []);
 
     } catch (err: any) {
       console.error("Error loading data:", err.message);
@@ -49,95 +79,95 @@ function SerchFieldsFilters() {
     }
   };
 
-  const getLanguageName = (languageId: number | null) => {
-    if (!languageId) return "N/A";
-    const language = languages.find(lang => lang.id === languageId);
-    return language ? language.name : "Unknown Language";
+  const applyFilters = () => {
+    const linkage: LinkedData[] = [];
+
+    // For simplicity, we'll assume a many-to-many implicit linkage for now
+    // In a real scenario, there would be a linking table or a foreign key.
+    // Here, every currency is 'linked' to all languages for display purposes.
+
+    const filteredCurrencies = currencies.filter(currency =>
+      currency.name.toLowerCase().includes(currencySearch.toLowerCase()) ||
+      currency.code.toLowerCase().includes(currencySearch.toLowerCase())
+    );
+
+    const filteredLanguages = languages.filter(language =>
+      language.name.toLowerCase().includes(languageSearch.toLowerCase()) ||
+      language.code.toLowerCase().includes(languageSearch.toLowerCase())
+    );
+
+    filteredCurrencies.forEach(currency => {
+      // In a real application, you'd fetch languages specifically linked to this currency
+      linkage.push({
+        currency,
+        languages: filteredLanguages
+      });
+    });
+
+    setFilteredData(linkage);
   };
 
-  const filteredCurrencies = currencies.filter(currency => {
-    const matchesSearchTerm = searchTerm.toLowerCase() === ''
-      || currency.name.toLowerCase().includes(searchTerm.toLowerCase())
-      || currency.code.toLowerCase().includes(searchTerm.toLowerCase())
-      || (currency.symbol && currency.symbol.toLowerCase().includes(searchTerm.toLowerCase()));
-
-    const matchesLanguageFilter = selectedLanguageFilter === 'all'
-      || (currency.language_id && currency.language_id.toString() === selectedLanguageFilter);
-
-    return matchesSearchTerm && matchesLanguageFilter;
-  });
 
   return (
-    <div className="container mx-auto p-6 bg-background text-foreground min-h-screen">
-      <Card className="shadow-lg">
-        <CardHeader className="bg-primary text-primary-foreground p-4 rounded-t-lg">
-          <CardTitle className="text-2xl font-bold">Currencies and Languages</CardTitle>
+    <div className="container mx-auto p-6 bg-background text-foreground">
+      <Card className="bg-card shadow-lg">
+        <CardHeader className="bg-card-foreground p-4 rounded-t-lg">
+          <CardTitle className="text-2xl font-bold text-primary">Currencies and Languages</CardTitle>
+          <CardDescription className="text-muted-foreground">Search and filter linked currencies and languages.</CardDescription>
         </CardHeader>
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <Input
-              type="text"
-              placeholder="Search currencies by name, code, or symbol..."
-              className="flex-grow bg-muted text-foreground"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by Currency Name or Code..."
+              value={currencySearch}
+              onChange={(e) => setCurrencySearch(e.target.value)}
+              className="bg-input border-border focus:ring-ring focus:border-primary"
             />
-            <Select onValueChange={setSelectedLanguageFilter} value={selectedLanguageFilter}>
-              <SelectTrigger className="w-full md:w-[200px] bg-muted text-foreground">
-                <SelectValue placeholder="Filter by Language" />
-              </SelectTrigger>
-              <SelectContent className="bg-background text-foreground">
-                <SelectItem value="all">All Languages</SelectItem>
-                {languages.map((lang) => (
-                  <SelectItem key={lang.id} value={lang.id.toString()}>
-                    {lang.name} ({lang.code})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button onClick={loadData} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-              Refresh Data
-            </Button>
+            <Input
+              placeholder="Search by Language Name or Code..."
+              value={languageSearch}
+              onChange={(e) => setLanguageSearch(e.target.value)}
+              className="bg-input border-border focus:ring-ring focus:border-primary"
+            />
           </div>
 
           {loading && <p className="text-center text-muted-foreground">Loading data...</p>}
-          {error && <p className="text-center text-destructive">{error}</p>}
+          {error && <p className="text-center text-red-500">{error}</p>}
 
           {!loading && !error && (
             <div className="overflow-x-auto">
-              <Table className="min-w-full divide-y divide-border">
-                <TableHeader className="bg-primary/10">
+              <Table className="min-w-full bg-card">
+                <TableHeader className="bg-muted">
                   <TableRow>
-                    <TableHead className="py-3 px-4 text-left text-sm font-medium text-primary-foreground">Currency Name</TableHead>
-                    <TableHead className="py-3 px-4 text-left text-sm font-medium text-primary-foreground">Currency Code</TableHead>
-                    <TableHead className="py-3 px-4 text-left text-sm font-medium text-primary-foreground">Symbol</TableHead>
-                    <TableHead className="py-3 px-4 text-left text-sm font-medium text-primary-foreground">Linked Language</TableHead>
-                    <TableHead className="py-3 px-4 text-left text-sm font-medium text-primary-foreground">Language Code</TableHead>
+                    <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Currency Name</TableHead>
+                    <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Currency Code</TableHead>
+                    <TableHead className="text-left py-3 px-4 font-semibold text-muted-foreground">Linked Languages (Name - Code)</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody className="divide-y divide-border">
-                  {filteredCurrencies.length > 0 ? (
-                    filteredCurrencies.map((currency) => {
-                      const linkedLanguage = languages.find(lang => lang.id === currency.language_id);
-                      return (
-                        <TableRow key={currency.id} className="hover:bg-muted/50 transition-colors">
-                          <TableCell className="py-3 px-4 whitespace-nowrap">{currency.name}</TableCell>
-                          <TableCell className="py-3 px-4 whitespace-nowrap font-mono">{currency.code}</TableCell>
-                          <TableCell className="py-3 px-4 whitespace-nowrap">{currency.symbol || 'N/A'}</TableCell>
-                          <TableCell className="py-3 px-4 whitespace-nowrap">
-                            {linkedLanguage ? linkedLanguage.name : 'Not Linked'}
-                          </TableCell>
-                          <TableCell className="py-3 px-4 whitespace-nowrap font-mono">
-                            {linkedLanguage ? linkedLanguage.code : 'N/A'}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
+                <TableBody>
+                  {filteredData.length > 0 ? (
+                    filteredData.map((item) => (
+                      <TableRow key={item.currency.id} className="border-b border-border hover:bg-muted/50">
+                        <TableCell className="py-3 px-4">{item.currency.name}</TableCell>
+                        <TableCell className="py-3 px-4">{item.currency.code}</TableCell>
+                        <TableCell className="py-3 px-4">
+                          {item.languages.length > 0 ? (
+                            <ul className="list-disc pl-5">
+                              {item.languages.map((lang) => (
+                                <li key={lang.id} className="text-sm">
+                                  {lang.name} ({lang.code})
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <span className="text-muted-foreground">No languages with applied filter</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">
-                        No currencies found matching your criteria.
-                      </TableCell>
+                      <TableCell colSpan={3} className="text-center py-4 text-muted-foreground">No data found matching your search.</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
