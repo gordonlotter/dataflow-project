@@ -1,184 +1,200 @@
 function SerchFieldsFilters() {
   interface Language {
     id: string;
-    name: string;
-    code: string;
+    lang_code: string;
+    lang_name: string;
+    created_at: string;
   }
   interface Currency {
     id: string;
-    name: string;
-    code: string;
-    symbol: string;
-    language_id: string | null; // Assuming a potential link
+    currency_code: string;
+    currency_name: string;
+    currency_symbol: string;
+    created_at: string;
   }
-  interface LinkedData {
-    languageName: string;
-    languageCode: string;
-    currencyName: string;
-    currencyCode: string;
-    currencySymbol: string;
+  interface LanguageCurrencyLink {
+    language: Language;
+    currency: Currency;
   }
 
+  // 1. Define ALL TypeScript interfaces HERE (inside function)
+  // 2. React hooks
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [selectedLanguageFilter, setSelectedLanguageFilter] = useState<string>('');
+  const [selectedCurrencyFilter, setSelectedCurrencyFilter] = useState<string>('');
   const [languages, setLanguages] = useState<Language[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
-  const [filteredData, setFilteredData] = useState<LinkedData[]>([]);
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [selectedLanguageFilter, setSelectedLanguageFilter] = useState<string>('all');
-  const [isLoading, setIsLoading] = useState<Boolean>(true);
+  const [linkedData, setLinkedData] = useState<LanguageCurrencyLink[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
+  // 3. Effects and handlers
   useEffect(() => {
     loadData();
   }, []);
 
-  useEffect(() => {
-    applyFilters();
-  }, [languages, currencies, searchTerm, selectedLanguageFilter]);
-
   const loadData = async () => {
-    setIsLoading(true);
+    setLoading(true);
+    setError(null);
     try {
-      const { data: connections } = await supabase
-        .from('database_connections')
-        .select('id')
-        .eq('is_active', true)
-        .single();
+      // Fetch languages
+      const { data: languagesData, error: languagesError } = await supabase
+        .from('languages')
+        .select('*')
+        .order('lang_name', { ascending: true });
 
-      if (!connections?.id) {
-        console.error("No active database connection found.");
-        setIsLoading(false);
-        return;
+      if (languagesError) throw languagesError;
+      setLanguages(languagesData || []);
+
+      // Fetch currencies
+      const { data: currenciesData, error: currenciesError } = await supabase
+        .from('currencies')
+        .select('*')
+        .order('currency_name', { ascending: true });
+
+      if (currenciesError) throw currenciesError;
+      setCurrencies(currenciesData || []);
+
+      // For demonstration, let's create a hypothetical link.
+      // In a real scenario, you'd likely have a linking table or
+      // a way to determine which languages are associated with which currencies.
+      // For now, we'll just demonstrate combining them hypothetically.
+      const transformedLinkedData: LanguageCurrencyLink[] = [];
+      const maxLength = Math.max(languagesData.length, currenciesData.length);
+
+      for (let i = 0; i < maxLength; i++) {
+        const language = languagesData[i % languagesData.length]; // cycle through languages
+        const currency = currenciesData[i % currenciesData.length]; // cycle through currencies
+        if (language && currency) {
+          transformedLinkedData.push({ language, currency });
+        }
       }
+      setLinkedData(transformedLinkedData);
 
-      const { data: languagesResult } = await supabase.functions.invoke('db-query', {
-        body: {
-          connectionId: connections.id,
-          query: 'SELECT id, name, code FROM languages'
-        }
-      });
-      setLanguages(languagesResult || []);
-
-      const { data: currenciesResult } = await supabase.functions.invoke('db-query', {
-        body: {
-          connectionId: connections.id,
-          query: 'SELECT id, name, code, symbol, language_id FROM currencies'
-        }
-      });
-      setCurrencies(currenciesResult || []);
-
-    } catch (error) {
-      console.error("Error loading data:", error);
+    } catch (err: any) {
+      console.error("Error loading data:", err);
+      setError(err.message || 'An unknown error occurred');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const applyFilters = () => {
-    const linked: LinkedData[] = [];
+  const filteredLinkedData = useMemo(() => {
+    let filtered = linkedData;
 
-    // Create a map for quick language lookup
-    const languageMap = new Map<string, Language>();
-    languages.forEach(lang => languageMap.set(lang.id, lang));
+    if (searchTerm) {
+      const lowerCaseSearchTerm = searchTerm.toLowerCase();
+      filtered = filtered.filter(item =>
+        item.language.lang_name.toLowerCase().includes(lowerCaseSearchTerm) ||
+        item.language.lang_code.toLowerCase().includes(lowerCaseSearchTerm) ||
+        item.currency.currency_name.toLowerCase().includes(lowerCaseSearchTerm) ||
+        item.currency.currency_code.toLowerCase().includes(lowerCaseSearchTerm)
+      );
+    }
 
-    currencies.forEach(currency => {
-      const language = currency.language_id ? languageMap.get(currency.language_id) : undefined;
+    if (selectedLanguageFilter) {
+      filtered = filtered.filter(item => item.language.id === selectedLanguageFilter);
+    }
 
-      const languageName = language?.name || 'N/A';
-      const languageCode = language?.code || 'N/A';
+    if (selectedCurrencyFilter) {
+      filtered = filtered.filter(item => item.currency.id === selectedCurrencyFilter);
+    }
 
-      let include = true;
+    return filtered;
+  }, [linkedData, searchTerm, selectedLanguageFilter, selectedCurrencyFilter]);
 
-      // Search term filter
-      if (searchTerm) {
-        const lowerSearchTerm = searchTerm.toLowerCase();
-        const matchesCurrency = currency.name.toLowerCase().includes(lowerSearchTerm) ||
-                                currency.code.toLowerCase().includes(lowerSearchTerm) ||
-                                (currency.symbol && currency.symbol.toLowerCase().includes(lowerSearchTerm));
-        const matchesLanguage = languageName.toLowerCase().includes(lowerSearchTerm) ||
-                                languageCode.toLowerCase().includes(lowerSearchTerm);
-        include = matchesCurrency || matchesLanguage;
-      }
-
-      // Language filter
-      if (selectedLanguageFilter !== 'all' && languageCode !== selectedLanguageFilter) {
-        include = false;
-      }
-
-      if (include) {
-        linked.push({
-          languageName: languageName,
-          languageCode: languageCode,
-          currencyName: currency.name,
-          currencyCode: currency.code,
-          currencySymbol: currency.symbol || 'N/A',
-        });
-      }
-    });
-
-    setFilteredData(linked);
-  };
-
+  // 4. Return JSX with Tailwind semantic tokens
   return (
-    <div className="container mx-auto p-6 bg-background text-foreground min-h-screen">
-      <Card className="shadow-lg">
-        <CardHeader className="bg-primary text-primary-foreground rounded-t-lg p-4">
+    <div className="container mx-auto p-6 bg-background text-foreground">
+      <Card className="bg-card text-card-foreground shadow-lg">
+        <CardHeader>
           <CardTitle className="text-2xl font-bold">Currencies and Languages</CardTitle>
+          <CardDescription className="text-muted-foreground">Search and filter linked currency and language information.</CardDescription>
         </CardHeader>
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <Input
               type="text"
-              placeholder="Search by name or code..."
+              placeholder="Search by language or currency name/code..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-grow bg-card text-card-foreground border-border focus:ring-primary focus:border-primary"
+              className="col-span-full md:col-span-1"
             />
-            <Select onValueChange={setSelectedLanguageFilter} value={selectedLanguageFilter}>
-              <SelectTrigger className="w-[180px] bg-card text-card-foreground border-border focus:ring-primary focus:border-primary">
+            <Select
+              value={selectedLanguageFilter}
+              onValueChange={setSelectedLanguageFilter}
+            >
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Filter by Language" />
               </SelectTrigger>
-              <SelectContent className="bg-popover text-popover-foreground">
-                <SelectItem value="all">All Languages</SelectItem>
+              <SelectContent>
+                <SelectItem value="">All Languages</SelectItem>
                 {languages.map((lang) => (
-                  <SelectItem key={lang.id} value={lang.code}>
-                    {lang.name} ({lang.code})
+                  <SelectItem key={lang.id} value={lang.id}>
+                    {lang.lang_name} ({lang.lang_code})
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Button onClick={() => { setSearchTerm(''); setSelectedLanguageFilter('all'); }} className="bg-secondary text-secondary-foreground hover:bg-secondary/80">
-              Reset Filters
-            </Button>
+
+            <Select
+              value={selectedCurrencyFilter}
+              onValueChange={setSelectedCurrencyFilter}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Filter by Currency" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All Currencies</SelectItem>
+                {currencies.map((curr) => (
+                  <SelectItem key={curr.id} value={curr.id}>
+                    {curr.currency_name} ({curr.currency_code})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
-          {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Loading data...</div>
-          ) : (
-            <div className="overflow-x-auto border border-border rounded-lg">
-              <Table className="w-full">
+          {loading && (
+            <div className="flex justify-center items-center h-48">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <span className="ml-2">Loading data...</span>
+            </div>
+          )}
+
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <XCircle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {!loading && !error && (
+            <div className="rounded-md border border-border overflow-hidden">
+              <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[200px] text-muted-foreground">Language Name</TableHead>
-                    <TableHead className="w-[100px] text-muted-foreground">Language Code</TableHead>
-                    <TableHead className="text-muted-foreground">Currency Name</TableHead>
-                    <TableHead className="w-[100px] text-muted-foreground">Currency Code</TableHead>
-                    <TableHead className="w-[80px] text-right text-muted-foreground">Symbol</TableHead>
+                  <TableRow className="bg-muted hover:bg-muted">
+                    <TableHead className="text-muted-foreground w-1/4">Language Name</TableHead>
+                    <TableHead className="text-muted-foreground w-1/4">Language Code</TableHead>
+                    <TableHead className="text-muted-foreground w-1/4">Currency Name</TableHead>
+                    <TableHead className="text-muted-foreground w-1/4">Currency Code</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredData.length > 0 ? (
-                    filteredData.map((item, index) => (
-                      <TableRow key={index} className="odd:bg-muted/50 even:bg-background">
-                        <TableCell className="font-medium">{item.languageName}</TableCell>
-                        <TableCell>{item.languageCode}</TableCell>
-                        <TableCell>{item.currencyName}</TableCell>
-                        <TableCell>{item.currencyCode}</TableCell>
-                        <TableCell className="text-right">{item.currencySymbol}</TableCell>
+                  {filteredLinkedData.length > 0 ? (
+                    filteredLinkedData.map((item, index) => (
+                      <TableRow key={`${item.language.id}-${item.currency.id}-${index}`} className="hover:bg-accent/50">
+                        <TableCell className="font-medium">{item.language.lang_name}</TableCell>
+                        <TableCell>{item.language.lang_code}</TableCell>
+                        <TableCell>{item.currency.currency_name}</TableCell>
+                        <TableCell>{item.currency.currency_code}</TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">
-                        No results found.
+                      <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                        No matching languages and currencies found.
                       </TableCell>
                     </TableRow>
                   )}
