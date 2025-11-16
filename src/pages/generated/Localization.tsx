@@ -1,59 +1,39 @@
 function Localization() {
-  interface Currency {
+  interface Tenant {
     id: string;
-    code: string;
     name: string;
-    symbol: string;
-    decimal_places: number;
+    domain: string;
     is_active: boolean;
-  }
-  interface Language {
-    id: string;
-    code: string;
-    name: string;
-    native_name: string;
-    is_active: boolean;
+    contact_email: string;
+    contact_phone: string;
+    created_at: string;
   }
 
-  const [currencies, setCurrencies] = useState<Currency[]>([]);
-  const [languages, setLanguages] = useState<Language[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterActive, setFilterActive] = useState('all'); // 'all', 'active', 'inactive'
   const { toast } = useToast();
 
   useEffect(() => {
-    loadData();
+    loadTenants();
   }, []);
 
-  const loadData = async () => {
+  const loadTenants = async () => {
     setLoading(true);
-    setError(null);
     try {
-      const { data: currencyResult, error: currencyError } = await supabase.functions.invoke('db-query', {
+      const { data: result, error } = await supabase.functions.invoke('db-query', {
         body: {
-          connectionId: '308f1f01-282b-40bc-b2c2-d1c8222a8d62',
-          query: 'SELECT * FROM currencies ORDER BY name ASC'
+          connectionId: '308f1f01-282b-40bc-b2c2-d1c8228a8d62',
+          query: 'SELECT id, name, domain, is_active, contact_email, contact_phone, created_at FROM tenants ORDER BY created_at DESC LIMIT 100'
         }
       });
 
-      if (currencyError) throw currencyError;
-      setCurrencies(currencyResult?.data || []);
-
-      const { data: languageResult, error: languageError } = await supabase.functions.invoke('db-query', {
-        body: {
-          connectionId: '308f1f01-282b-40bc-b2c2-d1c8222a8d62',
-          query: 'SELECT * FROM languages ORDER BY name ASC'
-        }
-      });
-
-      if (languageError) throw languageError;
-      setLanguages(languageResult?.data || []);
-
+      if (error) throw error;
+      setTenants(result?.data || []);
     } catch (err: any) {
-      console.error("Error loading localization data:", err);
-      setError(err.message || "An unknown error occurred");
       toast({
-        title: "Error loading data",
+        title: "Error loading tenants",
         description: err.message,
         variant: "destructive"
       });
@@ -62,100 +42,86 @@ function Localization() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center p-8">
-        <Loader2 className="animate-spin h-8 w-8 text-primary" />
-        <p className="ml-2 text-lg">Loading localization data...</p>
-      </div>
-    );
-  }
+  const filteredTenants = tenants.filter(tenant => {
+    const searchTermLower = searchTerm.toLowerCase();
+    const matchesSearch = searchTerm === '' ||
+      tenant.name.toLowerCase().includes(searchTermLower) ||
+      tenant.domain.toLowerCase().includes(searchTermLower) ||
+      tenant.contact_email.toLowerCase().includes(searchTermLower);
 
-  if (error) {
-    return (
-      <div className="flex flex-col items-center p-8 text-destructive">
-        <X className="h-12 w-12 mb-4" />
-        <h2 className="text-xl font-semibold">Error</h2>
-        <p className="text-lg text-center">Failed to load data: {error}</p>
-        <Button onClick={loadData} className="mt-4">Retry</Button>
-      </div>
-    );
-  }
+    const matchesFilter = filterActive === 'all' || 
+      (filterActive === 'active' && tenant.is_active) || 
+      (filterActive === 'inactive' && !tenant.is_active);
+
+    return matchesSearch && matchesFilter;
+  });
 
   return (
-    <div className="container mx-auto p-6 space-y-8 bg-background">
+    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+      <div className="flex items-center justify-between space-y-2">
+        <h2 className="text-3xl font-bold tracking-tight">Tenants</h2>
+        <div className="flex items-center space-x-2">
+          <Button onClick={loadTenants} disabled={loading}>
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Reload
+          </Button>
+          <Input 
+            type="search" 
+            placeholder="Search tenants..." 
+            className="md:w-[100px] lg:w-[300px]" 
+            value={searchTerm} 
+            onChange={(e) => setSearchTerm(e.target.value)} 
+          />
+          <Select value={filterActive} onValueChange={setFilterActive}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
       <Card>
-        <CardHeader>
-          <CardTitle className="text-3xl font-bold">Localization Settings</CardTitle>
-          <CardDescription>Manage currencies and languages available in the system.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div>
-            <h3 className="text-2xl font-semibold mb-4">Currencies ({currencies.length})</h3>
-            <div className="max-h-[400px] overflow-y-auto border rounded-md">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Symbol</TableHead>
-                    <TableHead className="text-center">Active</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {currencies.map((currency) => (
-                    <TableRow key={currency.id}>
-                      <TableCell className="font-medium">{currency.code}</TableCell>
-                      <TableCell>{currency.name}</TableCell>
-                      <TableCell>{currency.symbol}</TableCell>
-                      <TableCell className="text-center">
-                        {currency.is_active ? <Check className="h-5 w-5 text-green-500 mx-auto" /> : <X className="h-5 w-5 text-red-500 mx-auto" />}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="flex items-center justify-center h-96">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          </div>
-
-          <div>
-            <h3 className="text-2xl font-semibold mb-4">Languages ({languages.length})</h3>
-            <div className="max-h-[400px] overflow-y-auto border rounded-md">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Native Name</TableHead>
-                    <TableHead className="text-center">Active</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {languages.map((language) => (
-                    <TableRow key={language.id}>
-                      <TableCell className="font-medium">{language.code}</TableCell>
-                      <TableCell>{language.name}</TableCell>
-                      <TableCell>{language.native_name}</TableCell>
-                      <TableCell className="text-center">
-                        {language.is_active ? <Check className="h-5 w-5 text-green-500 mx-auto" /> : <X className="h-5 w-5 text-red-500 mx-auto" />}
-                      </TableCell>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Domain</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Contact Email</TableHead>
+                  <TableHead>Created At</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredTenants.length > 0 ? (
+                  filteredTenants.map((tenant) => (
+                    <TableRow key={tenant.id}>
+                      <TableCell className="font-medium">{tenant.name}</TableCell>
+                      <TableCell>{tenant.domain}</TableCell>
+                      <TableCell><Badge variant={tenant.is_active ? 'default' : 'outline'}>{tenant.is_active ? 'Active' : 'Inactive'}</Badge></TableCell>
+                      <TableCell>{tenant.contact_email}</TableCell>
+                      <TableCell>{new Date(tenant.created_at).toLocaleDateString()}</TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl font-bold">Connection between Currencies and Languages</CardTitle>
-          <CardDescription>While there isn't a direct relational link between currencies and languages in the provided schema, they often relate through regional settings for users and tenants.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">In a typical application, users or tenants would have a preferred language and a preferred currency, linking these two concepts indirectly. For example, a `tenants` table might have `currency_code` and `language_code` columns.</p>
-          <p className="mt-2 text-muted-foreground">To see how tenants are configured with currencies and languages, you would typically join `tenants` with `currencies` on `tenants.currency_code = currencies.code` and with `languages` on `tenants.language_code = languages.code`.</p>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-24 text-center">
+                      No tenants found.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>
