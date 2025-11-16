@@ -6,8 +6,6 @@ function Localization() {
     symbol: string;
     decimal_places: number;
     is_active: boolean;
-    created_at: string;
-    updated_at: string;
   }
   interface Language {
     id: string;
@@ -15,169 +13,193 @@ function Localization() {
     name: string;
     native_name: string;
     is_active: boolean;
-    created_at: string;
-    updated_at: string;
   }
 
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [languages, setLanguages] = useState<Language[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [currencySearch, setCurrencySearch] = useState('');
-  const [languageSearch, setLanguageSearch] = useState('');
+  const [loadingCurrencies, setLoadingCurrencies] = useState(true);
+  const [loadingLanguages, setLoadingLanguages] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterActiveCurrencies, setFilterActiveCurrencies] = useState('all');
+  const [filterActiveLanguages, setFilterActiveLanguages] = useState('all');
   const { toast } = useToast();
 
   useEffect(() => {
-    loadData();
+    loadCurrencies();
+    loadLanguages();
   }, []);
 
-  const loadData = async () => {
+  const loadCurrencies = async () => {
+    setLoadingCurrencies(true);
     try {
-      const { data: currencyResult, error: currencyError } = await supabase.functions.invoke('db-query', {
+      const { data: result, error } = await supabase.functions.invoke('db-query', {
         body: {
           connectionId: '308f1f01-282b-40bc-b2c2-d1c8228a8d62',
           query: 'SELECT * FROM currencies ORDER BY name ASC'
         }
       });
 
-      if (currencyError) throw currencyError;
-      setCurrencies(currencyResult?.data || []);
-
-      const { data: languageResult, error: languageError } = await supabase.functions.invoke('db-query', {
-        body: {
-          connectionId: '308f1f01-282b-40bc-b2c2-d1c8228a8d62',
-          query: 'SELECT * FROM languages ORDER BY name ASC'
-        }
-      });
-
-      if (languageError) throw languageError;
-      setLanguages(languageResult?.data || []);
-
+      if (error) throw error;
+      setCurrencies(result?.data || []);
     } catch (err: any) {
       toast({
-        title: "Error loading data",
+        title: "Error loading currencies",
         description: err.message,
         variant: "destructive"
       });
     } finally {
-      setLoading(false);
+      setLoadingCurrencies(false);
     }
   };
 
-  const filteredCurrencies = currencies.filter(currency =>
-    currency.name.toLowerCase().includes(currencySearch.toLowerCase()) ||
-    currency.code.toLowerCase().includes(currencySearch.toLowerCase())
-  );
+  const loadLanguages = async () => {
+    setLoadingLanguages(true);
+    try {
+        const { data: result, error } = await supabase.functions.invoke('db-query', {
+        body: {
+            connectionId: '308f1f01-282b-40bc-b2c2-d1c8228a8d62', // Assuming same connection an a 'languages' table exists
+            query: 'SELECT * FROM languages ORDER BY name ASC'
+        }
+        });
 
-  const filteredLanguages = languages.filter(language =>
-    language.name.toLowerCase().includes(languageSearch.toLowerCase()) ||
-    language.native_name.toLowerCase().includes(languageSearch.toLowerCase()) ||
-    language.code.toLowerCase().includes(languageSearch.toLowerCase())
-  );
+        if (error) throw error;
+        setLanguages(result?.data || []);
+    } catch (err: any) {
+        toast({
+            title: "Error loading languages",
+            description: err.message,
+            variant: "destructive"
+        });
+    } finally {
+        setLoadingLanguages(false);
+    }
+  };
 
-  if (loading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>;
+  const filteredCurrencies = currencies.filter(currency => {
+    const matchesSearch = currency.name.toLowerCase().includes(searchTerm.toLowerCase()) || currency.code.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesFilter = filterActiveCurrencies === 'all' || (filterActiveCurrencies === 'active' && currency.is_active) || (filterActiveCurrencies === 'inactive' && !currency.is_active);
+    return matchesSearch && matchesFilter;
+  });
+
+  const filteredLanguages = languages.filter(language => {
+      const matchesSearch = language.name.toLowerCase().includes(searchTerm.toLowerCase()) || language.code.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesFilter = filterActiveLanguages === 'all' || (filterActiveLanguages === 'active' && language.is_active) || (filterActiveLanguages === 'inactive' && !language.is_active);
+      return matchesSearch && matchesFilter;
+  })
 
   return (
-    <div className="container mx-auto p-6 bg-background">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-foreground">Localization Settings</h1>
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-6">
+    <Tabs defaultValue="currencies" className="w-full">
+      <TabsList className="grid w-full grid-cols-2">
+        <TabsTrigger value="currencies">Currencies</TabsTrigger>
+        <TabsTrigger value="languages">Languages</TabsTrigger>
+      </TabsList>
+      <TabsContent value="currencies">
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl">Currencies</CardTitle>
-            <CardDescription>Manage your supported currencies.</CardDescription>
+            <CardTitle>Currencies</CardTitle>
           </CardHeader>
           <CardContent>
-            <Input
-              placeholder="Search currencies..."
-              value={currencySearch}
-              onChange={(e) => setCurrencySearch(e.target.value)}
-              className="mb-4"
-            />
-            <div className="max-h-[400px] overflow-y-auto pr-2">
+            <div className="flex items-center gap-4 mb-4">
+              <Input
+                placeholder="Search by name or code..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="max-w-sm"
+              />
+              <Select value={filterActiveCurrencies} onValueChange={setFilterActiveCurrencies}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {loadingCurrencies ? (
+              <div className="flex justify-center items-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Code</TableHead>
                     <TableHead>Name</TableHead>
+                    <TableHead>Code</TableHead>
                     <TableHead>Symbol</TableHead>
-                    <TableHead className="text-center">Active</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCurrencies.length > 0 ? (
-                    filteredCurrencies.map((currency) => (
-                      <TableRow key={currency.id}>
-                        <TableCell className="font-medium">{currency.code}</TableCell>
-                        <TableCell>{currency.name}</TableCell>
-                        <TableCell>{currency.symbol}</TableCell>
-                        <TableCell className="text-center">
-                          {currency.is_active ? <Check className="h-4 w-4 text-green-500 mx-auto" /> : <X className="h-4 w-4 text-red-500 mx-auto" />}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">
-                        No currencies found.
-                      </TableCell>
+                  {filteredCurrencies.map((currency) => (
+                    <TableRow key={currency.id}>
+                      <TableCell>{currency.name}</TableCell>
+                      <TableCell>{currency.code}</TableCell>
+                      <TableCell>{currency.symbol}</TableCell>
+                      <TableCell>{currency.is_active ? 'Active' : 'Inactive'}</TableCell>
                     </TableRow>
-                  )}
+                  ))}
                 </TableBody>
               </Table>
-            </div>
+            )}
           </CardContent>
         </Card>
-
-        <Card>
+      </TabsContent>
+      <TabsContent value="languages">
+         <Card>
           <CardHeader>
-            <CardTitle className="text-xl">Languages</CardTitle>
-            <CardDescription>Manage your supported languages.</CardDescription>
+            <CardTitle>Languages</CardTitle>
           </CardHeader>
           <CardContent>
-            <Input
-              placeholder="Search languages..."
-              value={languageSearch}
-              onChange={(e) => setLanguageSearch(e.target.value)}
-              className="mb-4"
-            />
-            <div className="max-h-[400px] overflow-y-auto pr-2">
+            <div className="flex items-center gap-4 mb-4">
+              <Input
+                placeholder="Search by name or code..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="max-w-sm"
+              />
+              <Select value={filterActiveLanguages} onValueChange={setFilterActiveLanguages}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {loadingLanguages ? (
+              <div className="flex justify-center items-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Code</TableHead>
                     <TableHead>Name</TableHead>
-                    <TableHead>Native Name</TableHead>
-                    <TableHead className="text-center">Active</TableHead>
+                     <TableHead>Native Name</TableHead>
+                    <TableHead>Code</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredLanguages.length > 0 ? (
-                    filteredLanguages.map((language) => (
-                      <TableRow key={language.id}>
-                        <TableCell className="font-medium">{language.code}</TableCell>
-                        <TableCell>{language.name}</TableCell>
-                        <TableCell>{language.native_name}</TableCell>
-                        <TableCell className="text-center">
-                          {language.is_active ? <Check className="h-4 w-4 text-green-500 mx-auto" /> : <X className="h-4 w-4 text-red-500 mx-auto" />}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">
-                        No languages found.
-                      </TableCell>
+                  {filteredLanguages.map((lang) => (
+                    <TableRow key={lang.id}>
+                      <TableCell>{lang.name}</TableCell>
+                      <TableCell>{lang.native_name}</TableCell>
+                      <TableCell>{lang.code}</TableCell>
+                      <TableCell>{lang.is_active ? 'Active' : 'Inactive'}</TableCell>
                     </TableRow>
-                  )}
+                  ))}
                 </TableBody>
               </Table>
-            </div>
+            )}
           </CardContent>
         </Card>
-      </div>
-    </div>
+      </TabsContent>
+    </Tabs>
   );
 }
 
